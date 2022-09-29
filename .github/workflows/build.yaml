@@ -22,14 +22,6 @@ jobs:
     - name: Get dependencies
       run: flutter pub get
 
-    - name: Build on Android
-      env:
-        OTPAPP_STORE_PASSWORD: ${{ secrets.OTPAPP_STORE_PASSWORD }}
-        OTPAPP_KEY_PASSWORD: ${{ secrets.OTPAPP_KEY_PASSWORD }}
-        OTPAPP_KEY_ALIAS: ${{ secrets.OTPAPP_KEY_ALIAS }}
-      run: |
-          export OTPAPP_STORE_PATH=$(pwd)/android/otpapp_keystore.jks
-          flutter build apk --release
     - name: Build on iOS
       run: flutter build ios --release --no-codesign
     
@@ -42,11 +34,9 @@ jobs:
           mv ./build/ios/iphoneos/Runner.app Payload
           zip -r -y Payload.zip Payload/Runner.app
           mv Payload.zip Payload.ipa
-          mv build/app/outputs/flutter-apk/app-release.apk ./app-release.apk
 
     - uses: actions/upload-artifact@v2
       with:
         name: otpapp-artifact
         path: |
-          app-release.apk
           Payload.ipa
