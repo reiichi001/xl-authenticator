@@ -25,9 +25,6 @@ jobs:
     - name: Build on iOS
       run: flutter build ios --release --no-codesign
     
-    - name: Resign IPA
-      run: find . -path './build/ios/iphoneos/Runner.app/*' -type f -exec sh -c "ldid -S -M \"{}\";" \;
-
     - name: Make IPA
       run: |
           mkdir -p Payload
