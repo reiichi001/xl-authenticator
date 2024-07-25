@@ -1,0 +1,29 @@
+{
+    "name": "XL-Authenticator Unofficial Release",
+    "subtitle": "Franz made github build it",
+    "description": "Unofficial Altstore repo for XL-Authenticator",
+    "iconURL": "https://example.com/source_icon.png",
+    "headerURL": "https://example.com/source_header.png",
+    "website": "https://github.com/reiichi001/xl-authenticator",
+    "tintColor": "#F54F32",
+    "apps": [
+        {
+            "name": "XL Authenticator",
+            "bundleIdentifier": "com.github.goaaats.xlauthenticator",
+            "developerName": "Goaaaats",
+            "subtitle": "Android/iOS OTP authenticator app for XIVLauncher built in Flutter",
+            "localizedDescription": "Android/iOS OTP authenticator app for XIVLauncher built in Flutter",
+            "iconURL": "https://github.com/reiichi001/xl-authenticator/blob/master/assets/logo.png?raw=true",
+            "tintColor": "#F54F32",
+            "category": "utilities",
+            "versions": [
+                {
+                  "version": "1.0.5",
+                  "date": "2023-10-23",
+                  "localizedDescription": "Version 1.0.5+7",
+                  "size": 79717,
+                  "downloadURL": "https://github.com/reiichi001/xl-authenticator/releases/download/1.0.5%2B7/Payload.ipa"
+                }]
+        }
+    ]
+  }
