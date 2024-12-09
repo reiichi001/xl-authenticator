@@ -9,7 +9,7 @@
     "apps": [
         {
             "name": "XL Authenticator",
-            "bundleIdentifier": "com.github.goaaats.xlauthenticator",
+            "bundleIdentifier": "com.goatsoft.xlOtpsend",
             "developerName": "Goaaaats",
             "subtitle": "Android/iOS OTP authenticator app for XIVLauncher built in Flutter",
             "localizedDescription": "Android/iOS OTP authenticator app for XIVLauncher built in Flutter",
