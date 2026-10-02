@@ -1,0 +1,124 @@
+name: Sync iOS project files
+
+# Manual only, and deliberately so: this exists to run Flutter's automatic iOS
+# project migration - the UIScene / scene-delegate rewrite that `flutter build
+# ios` applies to AppDelegate.swift, Info.plist and project.pbxproj - and get
+# the result back into the repo.
+#
+# It needs doing because the migration is triggered by the build itself, so the
+# committed project silently lags what CI actually compiles. Run this when
+# Flutter's iOS template changes (it will say so in the build log) or after
+# upgrading the Flutter SDK.
+#
+# Pick the branch from the "Use workflow from" dropdown. Leave `commit` off to
+# inspect the result via the uploaded artifact without touching the branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit and push the migrated iOS project files back to the selected branch'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+  JAVA_VERSION: '17'
+
+jobs:
+  sync:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # The compile is not the point - running an iOS build is simply the only
+      # supported way to trigger the migration.
+      - name: Build iOS app (applies the project migration)
+        run: flutter build ios --release --no-codesign
+
+      - name: Report what the build rewrote
+        run: |
+          set -euo pipefail
+          git status --porcelain
+          git --no-pager diff --stat
+
+          {
+            echo "### Files the build rewrote"
+            echo '```'
+            git status --porcelain
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload migrated project files
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-project-files
+          if-no-files-found: warn
+          path: |
+            ios/Runner/AppDelegate.swift
+            ios/Runner/SceneDelegate.swift
+            ios/Runner/Info.plist
+            ios/Runner.xcodeproj/project.pbxproj
+            ios/Flutter/AppFrameworkInfo.plist
+            ios/Flutter/Debug.xcconfig
+            ios/Flutter/Release.xcconfig
+            ios/Podfile
+
+      - name: Commit and push
+        if: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+
+          # Listed explicitly rather than `git add ios/`: ios/Podfile and
+          # Podfile.lock are not gitignored, so a blanket add would sweep in
+          # more than this workflow is meant to touch.
+          paths="
+            ios/Runner/AppDelegate.swift
+            ios/Runner/SceneDelegate.swift
+            ios/Runner/Info.plist
+            ios/Runner.xcodeproj/project.pbxproj
+            ios/Flutter/AppFrameworkInfo.plist
+            ios/Flutter/Debug.xcconfig
+            ios/Flutter/Release.xcconfig
+            ios/Podfile
+          "
+          for p in $paths; do
+            [ -e "$p" ] && git add -- "$p"
+          done
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit - the project is already migrated."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # No [skip ci] here, but it would make no difference either way: a
+          # push made with GITHUB_TOKEN does not trigger other workflows. The
+          # Build workflow has to be dispatched manually to re-validate the
+          # migrated project.
+          git commit -m "Apply Flutter's iOS project migration"
+          git push origin "HEAD:${{ github.ref_name }}"
