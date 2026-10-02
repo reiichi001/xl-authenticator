@@ -1,0 +1,12 @@
+# Copy to android/key.properties (gitignored) to sign release builds locally.
+#
+# In CI these values come from repository secrets instead:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+#   ANDROID_KEY_PASSWORD
+#
+# If this file is absent, release builds fall back to the debug signing key so
+# `flutter build apk --release` still works.
+storeFile=/absolute/path/to/your/release.jks
+storePassword=
+keyAlias=
+keyPassword=

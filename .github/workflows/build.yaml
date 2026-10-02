@@ -1,42 +1,167 @@
-name: Build app
-on: [push, pull_request, release]
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+# The tag path creates a release and commits the regenerated altstore.json
+# back to master, so the token needs write access to the repository contents.
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+  JAVA_VERSION: '17'
 
 jobs:
   build:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-java@v1
-      with:
-        java-version: '12.x'
-    - uses: subosito/flutter-action@v1
-      with:
-        flutter-version: '3.0.4'
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Homebrew
-      id: set-up-homebrew
-      uses: Homebrew/actions/setup-homebrew@master
-    - name: Install ldid
-      run: brew install ldid
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
 
-    - name: Get dependencies
-      run: flutter pub get
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
-    - name: Build on iOS
-      run: flutter build ios --release --no-codesign
-    
-    - name: Resign IPA
-      run: find . -path './build/ios/iphoneos/Runner.app/*' -type f -exec sh -c "ldid -S -M \"{}\";" \;
+      # A tag that disagrees with pubspec.yaml would publish an IPA whose
+      # CFBundleVersion does not match the manifest, which is exactly the bug
+      # that shipped with the 1.0.5+7 rebuild.
+      - name: Verify tag matches pubspec version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          pubspec_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)"
+          expected="${pubspec_version%%+*}"
+          if [ "$tag" != "$expected" ]; then
+            echo "::error::Tag '$tag' does not match pubspec.yaml version '$pubspec_version' (expected tag '$expected')."
+            exit 1
+          fi
+          echo "Tag $tag matches pubspec.yaml ($pubspec_version)."
 
-    - name: Make IPA
-      run: |
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Configure Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK will be debug-signed."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/release.jks
+          cat > android/key.properties <<EOF
+          storeFile=$PWD/android/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Resign iOS app
+        run: find build/ios/iphoneos/Runner.app -type f -exec ldid -S -M {} \;
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
           mkdir -p Payload
-          mv ./build/ios/iphoneos/Runner.app Payload
-          zip -r -y Payload.zip Payload/Runner.app
-          mv Payload.zip Payload.ipa
+          mv build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r -y Payload.ipa Payload
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: otpapp-artifact
-        path: |
-          Payload.ipa
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xl-authenticator
+          if-no-files-found: error
+          path: |
+            Payload.ipa
+            build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Payload.ipa
+            build/app/outputs/flutter-apk/app-release.apk
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+
+      # Version, build number and size are read back out of the IPA that was
+      # actually built, so the manifest can never drift from the asset again.
+      - name: Update AltStore manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+
+          plist="Payload/Runner.app/Info.plist"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
+          min_os="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$plist" 2>/dev/null || echo '15.0')"
+          size="$(stat -f%z Payload.ipa)"
+          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Payload.ipa"
+
+          echo "IPA reports version=$version build=$build minOS=$min_os size=$size"
+
+          # `flutter build ios` may rewrite tracked project files (the UIScene
+          # migration touches AppDelegate.swift, Info.plist and the pbxproj).
+          # Those edits are regenerated on every build and would block the
+          # branch switch below, so drop them. Payload.ipa is untracked and
+          # survives both this and the checkout.
+          git checkout -- .
+
+          git fetch origin master
+          git checkout -B master origin/master
+
+          python3 tools/update_altstore.py \
+            --file altstore.json \
+            --version "$version" \
+            --build "$build" \
+            --size "$size" \
+            --min-os-version "$min_os" \
+            --download-url "$download_url" \
+            --notes "Release ${GITHUB_REF_NAME}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add altstore.json
+
+          if git diff --cached --quiet; then
+            echo "altstore.json already up to date."
+          else
+            git commit -m "Update altstore.json for ${GITHUB_REF_NAME} [skip ci]"
+            git push origin master
+          fi

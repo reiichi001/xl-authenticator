@@ -12,14 +12,15 @@ import 'package:xl_otpsend/qr.dart';
 import 'package:xl_otpsend/scanresult.dart';
 
 class SettingsPage extends StatefulWidget {
-  SettingsPage({Key? key}) : super(key: key);
+  const SettingsPage({super.key});
 
   @override
-  _SettingsPageState createState() => _SettingsPageState();
+  State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  static const String REPO_LINK = "https://github.com/goaaats/xl-authenticator";
+  static const String repoLink =
+      "https://github.com/reiichi001/xl-authenticator";
 
   late bool isRestartChecked = false;
 
@@ -76,8 +77,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 TextSpan(
                     text: ((() {
                       if (isAccountSaved){
-                        if (savedName != '')
+                        if (savedName != '') {
                           return savedName;
+                        }
 
                         return "Yes";
                       }
@@ -91,8 +93,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     })()),
                     recognizer: TapGestureRecognizer()
                       ..onTap = () {
-                        if (savedSecret != null) {
-                          Clipboard.setData(ClipboardData(text: savedSecret));
+                        final secret = savedSecret;
+                        if (secret != null) {
+                          Clipboard.setData(ClipboardData(text: secret));
 
                           Fluttertoast.showToast(
                               msg: "Secret copied!",
@@ -124,8 +127,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextSpan(text: 'XIVLauncher IP: '),
                       TextSpan(
                           text: ((() {
-                            if (snapshot.hasData)
+                            if (snapshot.hasData) {
                               return snapshot.data as String;
+                            }
 
                             return "not set";
                           })()),
@@ -136,9 +140,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           })()),
                           recognizer: TapGestureRecognizer()
                             ..onTap = () {
-                              if (savedSecret != null)
-                                Clipboard.setData(
-                                    ClipboardData(text: savedSecret));
+                              final secret = savedSecret;
+                              if (secret != null) {
+                                Clipboard.setData(ClipboardData(text: secret));
+                              }
                             }),
                     ],
                   ));
@@ -147,7 +152,13 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                var result = await prompt(context,
+                // Read the saved IPs first so that no async gap separates the
+                // `context` use below from this closure's start.
+                final initialValue = await Communication.getSavedIps();
+
+                if (!context.mounted) return;
+
+                final result = await prompt(context,
                     title: Text("Enter XIVLauncher IP"),
                     textOK: Text("OK"),
                     textCancel: Text("Cancel"),
@@ -155,7 +166,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     minLines: 1,
                     autoFocus: true,
                     textCapitalization: TextCapitalization.none,
-                    initialValue: await Communication.getSavedIps());
+                    initialValue: initialValue);
 
                 if (result != null) {
                   debugPrint("Manual entry: $result");
@@ -228,45 +239,40 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _openRepoLink() async {
-    await launch(
-      REPO_LINK,
+    await launchUrl(
+      Uri.parse(repoLink),
+      mode: LaunchMode.externalApplication,
     );
   }
 
-  _navigateAndScanQr(BuildContext context) async {
+  Future<void> _navigateAndScanQr(BuildContext context) async {
     // Navigator.push returns a Future that completes after calling
     // Navigator.pop on the Selection Screen.
-    final result = await Navigator.push(
+    final result = await Navigator.push<ScanResult>(
       context,
-      // Create the SelectionScreen in the next step.
-      MaterialPageRoute(builder: (context) => QRViewExample()),
+      MaterialPageRoute<ScanResult>(builder: (context) => const QRViewExample()),
     );
 
-    if (result == null) return;
+    if (result == null || !context.mounted) return;
 
-    SavedAccount? saved;
-
-    switch (result.type) {
-      case ScanResultType.Uri:
-        saved = SavedAccount.parse(result.data);
-        break;
-      case ScanResultType.Raw:
-        saved = SavedAccount.unnamed(result.data.toString().toUpperCase().replaceAll(" ", ""));
-        break;
-    }
+    final saved = switch (result.type) {
+      ScanResultType.uri => SavedAccount.parse(result.data),
+      ScanResultType.raw => SavedAccount.unnamed(
+          result.data.toString().toUpperCase().replaceAll(" ", "")),
+    };
 
     setState(() {
-      if (saved != null) {
-        isAccountSaved = true;
-        savedName = saved.accountName;
-        savedSecret = saved.secret;
-      }
+      isAccountSaved = true;
+      savedName = saved.accountName;
+      savedSecret = saved.secret;
     });
 
-    SavedAccount.setSaved(saved as SavedAccount);
+    await SavedAccount.setSaved(saved);
+
+    if (!context.mounted) return;
 
     ScaffoldMessenger.of(context)
       ..removeCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text("Saved!")));
+      ..showSnackBar(const SnackBar(content: Text("Saved!")));
   }
 }

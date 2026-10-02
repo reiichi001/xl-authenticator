@@ -2,33 +2,41 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SavedAccount {
-  static const String SECRET_KEY = "SECRET";
-  static const String ACCOUNTNAME_KEY = "ACCOUNT_NAME";
+  static const String secretKey = "SECRET";
+  static const String accountNameKey = "ACCOUNT_NAME";
 
-  String? accountName;
-  String? secret;
+  /// The prefix XIVLauncher puts in front of the Square Enix ID in the OTP
+  /// setup URI, which we strip off before showing the name.
+  static const String _squareEnixIdPrefix = "Square Enix ID:";
 
-  SavedAccount(this.accountName, this.secret);
-  SavedAccount.unnamed(this.secret) : accountName = '';
+  final String? accountName;
+  final String? secret;
+
+  const SavedAccount(this.accountName, this.secret);
+  const SavedAccount.unnamed(this.secret) : accountName = '';
 
   static SavedAccount parse(String uri) {
-    var parsedUri = Uri.parse(uri);
+    final parsedUri = Uri.parse(uri);
 
-    var secret = parsedUri.queryParameters["secret"];
+    final secret = parsedUri.queryParameters["secret"];
 
-    var accountName = parsedUri.pathSegments[0];
-    accountName = accountName.substring(15); // Skips "Square Enix ID"
+    // The account name is the first path segment with the Square Enix ID
+    // prefix stripped. Both are optional in a malformed/partial URI, so fall
+    // back to an unnamed account rather than throwing.
+    final accountName = parsedUri.pathSegments.isNotEmpty
+        ? parsedUri.pathSegments[0].replaceFirst(_squareEnixIdPrefix, '').trim()
+        : null;
 
     return SavedAccount(accountName, secret);
   }
 
   static Future<SavedAccount?> getSaved() async {
-    var secure = new FlutterSecureStorage();
+    const secure = FlutterSecureStorage();
 
-    var secret = await secure.read(key: SavedAccount.SECRET_KEY);
+    final secret = await secure.read(key: SavedAccount.secretKey);
 
     if (secret == null) {
-      var saved = await getSavedInsecure();
+      final saved = await getSavedInsecure();
 
       if (saved != null) {
         await setSaved(saved);
@@ -37,42 +45,46 @@ class SavedAccount {
       return saved;
     }
 
-    var accountName = await secure.read(key: SavedAccount.ACCOUNTNAME_KEY);
+    final accountName = await secure.read(key: SavedAccount.accountNameKey);
 
-    if (accountName == null)
+    if (accountName == null) {
       return SavedAccount.unnamed(secret);
+    }
 
     return SavedAccount(accountName, secret);
   }
 
   static Future<SavedAccount?> getSavedInsecure() async {
-    var prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    if (!prefs.containsKey(SavedAccount.SECRET_KEY))
+    if (!prefs.containsKey(SavedAccount.secretKey)) {
       return null;
+    }
 
-    var secret = prefs.getString(SavedAccount.SECRET_KEY);
+    final secret = prefs.getString(SavedAccount.secretKey);
 
-    if (!prefs.containsKey(SavedAccount.ACCOUNTNAME_KEY))
+    if (!prefs.containsKey(SavedAccount.accountNameKey)) {
       return SavedAccount.unnamed(secret);
+    }
 
-    var accountName = prefs.getString(SavedAccount.ACCOUNTNAME_KEY);
+    final accountName = prefs.getString(SavedAccount.accountNameKey);
 
     return SavedAccount(accountName, secret);
   }
 
   static Future<void> setSaved(SavedAccount account) async {
-    var secure = new FlutterSecureStorage();
-    await secure.write(key: SavedAccount.SECRET_KEY, value: account.secret);
-    await secure.write(key: SavedAccount.ACCOUNTNAME_KEY, value: account.accountName);
+    const secure = FlutterSecureStorage();
+    await secure.write(key: SavedAccount.secretKey, value: account.secret);
+    await secure.write(
+        key: SavedAccount.accountNameKey, value: account.accountName);
 
-    var prefs = await SharedPreferences.getInstance();
-    await prefs.remove(SavedAccount.SECRET_KEY);
-    await prefs.remove(SavedAccount.ACCOUNTNAME_KEY);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(SavedAccount.secretKey);
+    await prefs.remove(SavedAccount.accountNameKey);
   }
 
   @override
   String toString() {
-    return '${accountName as String} - ${secret as String}';
+    return '${accountName ?? ''} - ${secret ?? ''}';
   }
 }
