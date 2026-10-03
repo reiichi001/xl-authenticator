@@ -19,6 +19,15 @@
             "category": "utilities",
             "versions": [
                 {
+                    "version": "1.0.6",
+                    "buildVersion": "7",
+                    "date": "2026-10-03T02:04:39Z",
+                    "localizedDescription": "Release 1.0.6",
+                    "size": 8657375,
+                    "minOSVersion": "15.0",
+                    "downloadURL": "https://github.com/reiichi001/xl-authenticator/releases/download/1.0.6/xl-authenticator-iOS.ipa"
+                },
+                {
                     "version": "1.0.5",
                     "buildVersion": "6",
                     "date": "2024-12-08",
