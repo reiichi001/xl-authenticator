@@ -62,12 +62,20 @@ jobs:
       - name: Build iOS app (unsigned)
         run: flutter build ios --release --no-codesign
 
-      - name: Install ldid
-        run: brew install ldid
-
-      - name: Resign iOS app
-        run: find build/ios/iphoneos/Runner.app -type f -exec ldid -S -M {} \;
-
+      # The IPA that AltStore is pointed at ships exactly as `--no-codesign`
+      # leaves it: no signature anywhere in the bundle. AltStore re-signs with
+      # the user's own certificate at install time, and it needs a clean bundle
+      # to do that.
+      #
+      # Do not add an `ldid`/`codesign` step to this one. The old workflow ran
+      # `find Runner.app -type f -exec ldid -S -M {} \;` over every file before
+      # packaging, which injected 61 zero-byte `.ldid.*` files into the bundle -
+      # including inside the frameworks' `_CodeSignature/` directories - and
+      # rewrote each framework's CodeResources. AltStore could not seal the
+      # result, and installd rejected the install with 0xe8008017 "a signed
+      # resource has been added, modified, or deleted". The fakesigned build
+      # below is the jailbroken case and is packaged separately for that reason.
+      #
       # Only the outer filename is ours to choose. The zip's top-level directory
       # has to stay `Payload/` - AltStore and every other sideloading tool
       # expects that layout, and an IPA that unzips to anything else will not
@@ -78,17 +86,35 @@ jobs:
       # string has to match byte for byte: the release workflow downloads,
       # unzips and stats this file, and writes it into altstore.json's
       # downloadURL. Keep the three in step.
-      - name: Package IPA
+      - name: Package the IPA for AltStore (unsigned)
         run: |
           set -euo pipefail
           rm -rf Payload
           mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/Runner.app
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
           zip -r -y xl-authenticator-iOS.ipa Payload
+          rm -rf Payload
 
-      - name: Upload IPA
+      # A copy of the same build with an ldid pseudo-signature on every file.
+      # That signature means nothing to a stock device - it is what a jailbroken
+      # install wants, and it is the one thing AltStore must not be given. The
+      # copy is taken after the clean IPA is already zipped, so the junk ldid
+      # leaves behind can never reach the AltStore artifact.
+      - name: Fakesign a copy for jailbroken devices
+        run: |
+          set -euo pipefail
+          brew install ldid
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          find Payload/Runner.app -type f -exec ldid -S -M {} \;
+          zip -r -y xl-authenticator-iOS-fakesigned.ipa Payload
+
+      - name: Upload IPAs
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
           if-no-files-found: error
-          path: xl-authenticator-iOS.ipa
+          path: |
+            xl-authenticator-iOS.ipa
+            xl-authenticator-iOS-fakesigned.ipa

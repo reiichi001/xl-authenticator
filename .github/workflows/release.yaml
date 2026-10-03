@@ -169,8 +169,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The same generated notes the release action would produce, except built
-      # here rather than by action-gh-release: we need to prepend the Android
-      # caveat, and generate_release_notes cannot prepend to anything.
+      # here rather than by action-gh-release: we need to prepend caveats about
+      # which asset is which, and generate_release_notes cannot prepend.
       - name: Compose the release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -181,17 +181,25 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -f tag_name="$tag" --jq '.body // ""' > generated-notes.md
 
+          # Both IPAs are the same build; only the signature differs, and the
+          # filenames do not say which one AltStore wants.
+          cat > release-notes.md <<'EOF'
+          > **Which IPA to use.** `xl-authenticator-iOS.ipa` is unsigned, and it is the
+          > one to give AltStore - AltStore re-signs it with your own certificate when
+          > you install. `xl-authenticator-iOS-fakesigned.ipa` carries an `ldid`
+          > pseudo-signature, which is only useful on a jailbroken device; it will not
+          > install through AltStore.
+
+          EOF
+
           if [ "${{ needs.build-android.outputs.apk-debug-signed }}" = "true" ]; then
-            cat > release-notes.md <<'EOF'
+            cat >> release-notes.md <<'EOF'
           > **The attached Android APK is debug-signed.** This fork has no release
           > keystore, so `flutter build apk --release` fell back to the debug key. It is
           > attached for convenience and is **not suitable for distribution**, nor for
-          > installing over an existing install. The iOS IPA is what this release is
-          > published for.
+          > installing over an existing install.
 
           EOF
-          else
-            : > release-notes.md
           fi
 
           cat generated-notes.md >> release-notes.md
@@ -207,6 +215,7 @@ jobs:
           body_path: release-notes.md
           files: |
             xl-authenticator-iOS.ipa
+            xl-authenticator-iOS-fakesigned.ipa
             android-apk/xl-authenticator-android*.apk
           fail_on_unmatched_files: true
 
@@ -225,6 +234,21 @@ jobs:
           git fetch origin master
           git checkout -B master origin/master
 
+          # localizedDescription is what AltStore shows as the version's release
+          # notes, so it comes from CHANGELOG.md rather than being restated
+          # here. A missing section is a warning, not a failure - prose should
+          # never be what breaks a release.
+          notes="$(awk -v heading="## ${tag}" '
+            $0 == heading { inside = 1; next }
+            inside && /^## / { exit }
+            inside && !started && /^[[:space:]]*$/ { next }
+            inside { started = 1; print }
+          ' CHANGELOG.md)"
+          if [ -z "${notes//[[:space:]]/}" ]; then
+            echo "::warning::CHANGELOG.md has no '## ${tag}' section; using a generic note."
+            notes="Release ${tag}"
+          fi
+
           python3 tools/update_altstore.py \
             --file altstore.json \
             --version "${{ steps.ipa.outputs.version }}" \
@@ -232,7 +256,7 @@ jobs:
             --size "${{ steps.ipa.outputs.size }}" \
             --min-os-version "${{ steps.ipa.outputs.min_os }}" \
             --download-url "$download_url" \
-            --notes "Release ${tag}"
+            --notes "$notes"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
