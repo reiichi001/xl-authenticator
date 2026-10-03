@@ -15,7 +15,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In iOS, build-name is used as CFBundleShortVersionString while build-number used as CFBundleVersion.
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-version: 1.0.7+8
+version: 1.0.8+9
 
 environment:
   sdk: ^3.12.0
@@ -45,17 +45,14 @@ dependencies:
 
   url_launcher: ^6.3.3
 
-  # Held at v10 for the release that migrates existing installs, on purpose.
-  # v11 removed the AES-CBC/RSA-PKCS1 ciphers that v5 used, so a direct
-  # 5.x -> 11.x upgrade makes existing Android secrets unreadable. v10 still
-  # ships those ciphers and re-encrypts stored data into the AES-GCM/OAEP
-  # format on first launch, so shipping v10 migrates every existing user's
-  # saved secret silently.
+  # Held at v10 on purpose. v11 removed the AES-CBC/RSA-PKCS1 ciphers that v5
+  # used, so upgrading straight from 5.x would make existing Android secrets
+  # unreadable. v10 still ships those ciphers and re-encrypts stored data into
+  # the AES-GCM/OAEP format on first launch, so it migrates every existing
+  # user's saved secret silently.
   #
-  # That release is 1.0.7, not 1.0.6: 1.0.6 never reached anyone - its IPA did
-  # not install (see CHANGELOG) and its APK is debug-signed - so the migration
-  # has still not run in the wild. Keep the pin until a release carrying v10
-  # has actually been installed by users, then bump to ^11.2.0.
+  # Moving to v11 belongs in a later release, once an update carrying v10 has
+  # actually been installed by users.
   # See: flutter_secure_storage CHANGELOG 11.0.0.
   flutter_secure_storage: ^10.3.1
 

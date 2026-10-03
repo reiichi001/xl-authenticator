@@ -20,8 +20,9 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  testWidgets('opens settings when no account has been saved',
-      (WidgetTester tester) async {
+  testWidgets('opens settings when no account has been saved', (
+    WidgetTester tester,
+  ) async {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
 
     await tester.pumpWidget(const MyApp());
@@ -32,8 +33,9 @@ void main() {
     expect(find.text('Set-Up OTP code'), findsOneWidget);
   });
 
-  testWidgets('shows a generated OTP when an account has been saved',
-      (WidgetTester tester) async {
+  testWidgets('shows a generated OTP when an account has been saved', (
+    WidgetTester tester,
+  ) async {
     FlutterSecureStorage.setMockInitialValues(<String, String>{
       'SECRET': testSecret,
       'ACCOUNT_NAME': 'Test Character',

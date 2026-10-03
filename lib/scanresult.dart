@@ -7,7 +7,4 @@ class ScanResult {
   const ScanResult.raw(this.data) : type = ScanResultType.raw;
 }
 
-enum ScanResultType {
-  uri,
-  raw,
-}
+enum ScanResultType { uri, raw }

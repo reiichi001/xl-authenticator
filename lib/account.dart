@@ -80,7 +80,9 @@ class SavedAccount {
     // FlutterSecureStorage.write rejects a null value outright, so normalise at
     // the write boundary rather than letting a scan crash on save.
     await secure.write(
-        key: SavedAccount.accountNameKey, value: account.accountName ?? '');
+      key: SavedAccount.accountNameKey,
+      value: account.accountName ?? '',
+    );
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(SavedAccount.secretKey);
