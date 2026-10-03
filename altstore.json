@@ -19,6 +19,15 @@
             "category": "utilities",
             "versions": [
                 {
+                    "version": "1.0.7",
+                    "buildVersion": "8",
+                    "date": "2026-10-03T02:33:59Z",
+                    "localizedDescription": "Dependency bump release, plus an AltStore install fix.\n\nThe IPA published for AltStore is now shipped unsigned, which is what AltStore\nneeds in order to re-sign it with your own certificate at install time. It was\npreviously fakesigned before packaging, and iOS rejected the result during\ninstall with \"a signed resource has been added, modified, or deleted\". A\nfakesigned copy is still attached to the release as\n`xl-authenticator-iOS-fakesigned.ipa`, for jailbroken devices.",
+                    "size": 8558834,
+                    "minOSVersion": "15.0",
+                    "downloadURL": "https://github.com/reiichi001/xl-authenticator/releases/download/1.0.7/xl-authenticator-iOS.ipa"
+                },
+                {
                     "version": "1.0.6",
                     "buildVersion": "7",
                     "date": "2026-10-03T02:04:39Z",
