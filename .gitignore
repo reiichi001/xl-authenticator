@@ -44,3 +44,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android signing material - never commit. The historical keystore
+# (android/otpapp_keystore.jks, commit 5411f24) was public, so that key is
+# burned; a replacement must not repeat the mistake. key.properties.example
+# already documents that android/key.properties is gitignored, which until now
+# it was not.
+/android/key.properties
+/android/*.jks
+/android/*.keystore

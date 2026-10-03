@@ -75,8 +75,12 @@ class SavedAccount {
   static Future<void> setSaved(SavedAccount account) async {
     const secure = FlutterSecureStorage();
     await secure.write(key: SavedAccount.secretKey, value: account.secret);
+
+    // parse() returns a null name for a URI with no path segment, and
+    // FlutterSecureStorage.write rejects a null value outright, so normalise at
+    // the write boundary rather than letting a scan crash on save.
     await secure.write(
-        key: SavedAccount.accountNameKey, value: account.accountName);
+        key: SavedAccount.accountNameKey, value: account.accountName ?? '');
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(SavedAccount.secretKey);
