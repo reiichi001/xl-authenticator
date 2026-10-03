@@ -72,17 +72,23 @@ jobs:
       # has to stay `Payload/` - AltStore and every other sideloading tool
       # expects that layout, and an IPA that unzips to anything else will not
       # install.
+      #
+      # The capital "OS" is deliberate, matching `xl-authenticator-android.apk`.
+      # Release asset names are case-sensitive, so anything that builds this
+      # string has to match byte for byte: the release workflow downloads,
+      # unzips and stats this file, and writes it into altstore.json's
+      # downloadURL. Keep the three in step.
       - name: Package IPA
         run: |
           set -euo pipefail
           rm -rf Payload
           mkdir -p Payload
           mv build/ios/iphoneos/Runner.app Payload/Runner.app
-          zip -r -y xl-authenticator-ios.ipa Payload
+          zip -r -y xl-authenticator-iOS.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
           if-no-files-found: error
-          path: xl-authenticator-ios.ipa
+          path: xl-authenticator-iOS.ipa

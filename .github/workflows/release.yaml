@@ -152,13 +152,13 @@ jobs:
         id: ipa
         run: |
           set -euo pipefail
-          unzip -q -o xl-authenticator-ios.ipa -d ipa-unpacked
+          unzip -q -o xl-authenticator-iOS.ipa -d ipa-unpacked
           plist="ipa-unpacked/Payload/Runner.app/Info.plist"
 
           version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
           build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
           min_os="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$plist" 2>/dev/null || echo '15.0')"
-          size="$(stat -f%z xl-authenticator-ios.ipa)"
+          size="$(stat -f%z xl-authenticator-iOS.ipa)"
 
           echo "IPA reports version=$version build=$build minOS=$min_os size=$size"
           {
@@ -206,7 +206,7 @@ jobs:
           tag_name: ${{ needs.preflight.outputs.tag }}
           body_path: release-notes.md
           files: |
-            xl-authenticator-ios.ipa
+            xl-authenticator-iOS.ipa
             android-apk/xl-authenticator-android*.apk
           fail_on_unmatched_files: true
 
@@ -220,7 +220,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ needs.preflight.outputs.tag }}"
-          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/xl-authenticator-ios.ipa"
+          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/xl-authenticator-iOS.ipa"
 
           git fetch origin master
           git checkout -B master origin/master
