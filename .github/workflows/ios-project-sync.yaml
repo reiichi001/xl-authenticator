@@ -1,14 +1,19 @@
 name: Sync iOS project files
 
 # Manual only, and deliberately so: this exists to run Flutter's automatic iOS
-# project migration - the UIScene / scene-delegate rewrite that `flutter build
-# ios` applies to AppDelegate.swift, Info.plist and project.pbxproj - and get
-# the result back into the repo.
+# project migrations and get the result back into the repo. Flutter 3.47 runs
+# two of them, both enabled by default on stable:
 #
-# It needs doing because the migration is triggered by the build itself, so the
-# committed project silently lags what CI actually compiles. Run this when
-# Flutter's iOS template changes (it will say so in the build log) or after
-# upgrading the Flutter SDK.
+#   * the UIScene lifecycle migration, which rewrites AppDelegate.swift and
+#     Info.plist; and
+#   * the Swift Package Manager integration migration, which rewrites
+#     project.pbxproj and Runner.xcscheme. The scheme gains a "Run Prepare
+#     Flutter Framework Script" execution action, replacing the run-script
+#     phase that CocoaPods projects used for xcode_backend.sh.
+#
+# Both are applied by the build itself, so the committed project silently lags
+# what CI actually compiles. Run this when Flutter's iOS template changes (it
+# will say so in the build log) or after upgrading the Flutter SDK.
 #
 # Pick the branch from the "Use workflow from" dropdown. Leave `commit` off to
 # inspect the result via the uploaded artifact without touching the branch.
@@ -81,6 +86,7 @@ jobs:
             ios/Runner/SceneDelegate.swift
             ios/Runner/Info.plist
             ios/Runner.xcodeproj/project.pbxproj
+            ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
             ios/Flutter/AppFrameworkInfo.plist
             ios/Flutter/Debug.xcconfig
             ios/Flutter/Release.xcconfig
@@ -99,6 +105,7 @@ jobs:
             ios/Runner/SceneDelegate.swift
             ios/Runner/Info.plist
             ios/Runner.xcodeproj/project.pbxproj
+            ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
             ios/Flutter/AppFrameworkInfo.plist
             ios/Flutter/Debug.xcconfig
             ios/Flutter/Release.xcconfig
@@ -107,6 +114,21 @@ jobs:
           for p in $paths; do
             [ -e "$p" ] && git add -- "$p"
           done
+
+          # Safety net. Because the list above is an allowlist, any file the
+          # migration rewrites that is missing from it gets silently left out
+          # of the commit - which is exactly how Runner.xcscheme was dropped the
+          # first time this ran, leaving the branch with a half-applied
+          # migration. Anything still dirty and not gitignored after staging
+          # means the list is incomplete, so fail instead of committing a
+          # partial result.
+          leftover="$(git ls-files --modified --others --exclude-standard -- ios/)"
+          if [ -n "$leftover" ]; then
+            echo "::error::The build rewrote iOS files that are missing from this workflow's allowlist:"
+            echo "$leftover"
+            echo "Add them to both the upload and commit path lists, then re-run."
+            exit 1
+          fi
 
           if git diff --cached --quiet; then
             echo "Nothing to commit - the project is already migrated."

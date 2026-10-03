@@ -1,20 +1,17 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GeneralSetting {
-  static const String ISCLOSE_KEY = "ISCLOSE";
+  static const String isCloseKey = "ISCLOSE";
 
   static Future<bool> getIsAutoClose() async {
-    var prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    if (!prefs.containsKey(ISCLOSE_KEY))
-      return false;
-
-    return prefs.getBool(ISCLOSE_KEY) as bool;
+    return prefs.getBool(isCloseKey) ?? false;
   }
 
   static Future<void> setIsAutoClose(bool state) async {
-    var prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    prefs.setBool(ISCLOSE_KEY, state);
+    await prefs.setBool(isCloseKey, state);
   }
 }

@@ -1,0 +1,52 @@
+name: Checks
+
+# Deliberately *not* path-filtered, unlike the two platform builds.
+#
+# Analyze and test cover the Dart code, which both platforms share, so there is
+# nothing platform-specific to filter on - and because this is the one workflow
+# that reports on every pull request, it can be made a required status check
+# without a docs-only PR sitting forever on "Expected - waiting for status to be
+# reported". (The platform builds cannot be required checks for exactly that
+# reason.)
+#
+# ubuntu-latest rather than macOS: neither command needs a platform SDK, and a
+# Linux runner costs a fraction of a macOS one.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out. Defaults to the triggering ref.
+        type: string
+        default: ''
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keyed by ref, so superseded PR pushes cancel each other while a release run
+# (which is on a tag ref) is never collaterally cancelled.
+concurrency:
+  group: checks-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Flutter
+        uses: ./.github/actions/flutter-setup
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

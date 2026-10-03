@@ -1,0 +1,249 @@
+name: Release
+
+# Releases are cut by pushing a version tag, which is independent of any merge to
+# master - the tag carries the commit to build, and the workflow file comes from
+# that same commit.
+#
+# The manual dispatch republishes an *existing* tag. That is the recovery path
+# when a release build fails: deleting and re-pushing the tag would rewrite it to
+# a different commit, and the published AltStore entry refers to the tag by name.
+#
+# Only a tag push runs the builds here. The platform workflows deliberately have
+# no `tags:` trigger, so a release builds each platform exactly once.
+
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)publish, e.g. 1.0.6'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+# Keyed by ref and never cancelled: two tags are two releases, and a re-run of
+# one tag must not be killed by anything.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    # Reads only; the workflow-wide `contents: write` is for the publish job.
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      # Normalise the two entry points into one tag. A dispatched run has
+      # github.ref_name set to the *branch* it was dispatched from, which is not
+      # what we are releasing, so it must not be used as the tag.
+      - name: Resolve the tag being released
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+            ref="refs/tags/${tag}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            ref="${GITHUB_REF}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${tag} (${ref})"
+
+      # Checked before the checkout, so a typo in the dispatch box fails with a
+      # message that names the problem instead of a bare "couldn't find remote
+      # ref" from actions/checkout.
+      - name: Verify the tag exists
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag }}"
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" > /dev/null 2>&1; then
+            echo "::error::No tag '${tag}' exists in ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+
+      # A tag that disagrees with pubspec.yaml publishes an IPA whose
+      # CFBundleVersion does not match the tag, which is exactly the bug that
+      # shipped with the 1.0.5+7 rebuild.
+      - name: Verify tag matches pubspec version
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve.outputs.tag }}"
+          pubspec_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n1)"
+          expected="${pubspec_version%%+*}"
+          if [ "$tag" != "$expected" ]; then
+            echo "::error::Tag '$tag' does not match pubspec.yaml version '$pubspec_version' (expected tag '$expected')."
+            exit 1
+          fi
+          echo "Tag $tag matches pubspec.yaml ($pubspec_version)."
+
+  # Analyze and test gate the release too, so a tag cannot ship a red build even
+  # if it was created without a pull request.
+  checks:
+    needs: preflight
+    permissions:
+      contents: read
+    uses: ./.github/workflows/checks.yaml
+    with:
+      ref: ${{ needs.preflight.outputs.ref }}
+
+  build-ios:
+    needs: [preflight, checks]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-ios.yaml
+    with:
+      ref: ${{ needs.preflight.outputs.ref }}
+
+  build-android:
+    needs: [preflight, checks]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-android.yaml
+    # A called workflow does not receive repository secrets by default - only
+    # GITHUB_TOKEN. Without this, ANDROID_KEYSTORE_BASE64 arrives empty and a
+    # release would quietly ship a debug-signed APK even once a keystore exists.
+    secrets: inherit
+    with:
+      ref: ${{ needs.preflight.outputs.ref }}
+
+  publish:
+    needs: [preflight, build-ios, build-android]
+    # PlistBuddy and `stat -f%z` below, which are the macOS flavours.
+    runs-on: macos-latest
+    steps:
+      # First, because actions/checkout cleans untracked files by default and
+      # would otherwise delete the artifacts downloaded below.
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Download the IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+
+      - name: Download the APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: android-apk
+
+      # Version, build number and size are read back out of the IPA that was
+      # actually built, so the manifest can never drift from the asset again.
+      - name: Read the IPA's metadata
+        id: ipa
+        run: |
+          set -euo pipefail
+          unzip -q -o xl-authenticator-iOS.ipa -d ipa-unpacked
+          plist="ipa-unpacked/Payload/Runner.app/Info.plist"
+
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
+          min_os="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$plist" 2>/dev/null || echo '15.0')"
+          size="$(stat -f%z xl-authenticator-iOS.ipa)"
+
+          echo "IPA reports version=$version build=$build minOS=$min_os size=$size"
+          {
+            echo "version=$version"
+            echo "build=$build"
+            echo "min_os=$min_os"
+            echo "size=$size"
+          } >> "$GITHUB_OUTPUT"
+
+      # The same generated notes the release action would produce, except built
+      # here rather than by action-gh-release: we need to prepend the Android
+      # caveat, and generate_release_notes cannot prepend to anything.
+      - name: Compose the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.preflight.outputs.tag }}"
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$tag" --jq '.body // ""' > generated-notes.md
+
+          if [ "${{ needs.build-android.outputs.apk-debug-signed }}" = "true" ]; then
+            cat > release-notes.md <<'EOF'
+          > **The attached Android APK is debug-signed.** This fork has no release
+          > keystore, so `flutter build apk --release` fell back to the debug key. It is
+          > attached for convenience and is **not suitable for distribution**, nor for
+          > installing over an existing install. The iOS IPA is what this release is
+          > published for.
+
+          EOF
+          else
+            : > release-notes.md
+          fi
+
+          cat generated-notes.md >> release-notes.md
+          echo "--- Release notes ---"
+          cat release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Without this a manual dispatch would try to release the branch it was
+          # dispatched from, where github.ref_name is the branch name.
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          body_path: release-notes.md
+          files: |
+            xl-authenticator-iOS.ipa
+            android-apk/xl-authenticator-android*.apk
+          fail_on_unmatched_files: true
+
+      # altstore.json is served to installed clients from
+      # raw.githubusercontent.com/<repo>/master/altstore.json, so the manifest
+      # has to land on master whatever branch was released. That URL is a
+      # contract with existing subscribers - pointing it at another branch would
+      # make every one of them re-add the source - so this is the one thing a
+      # release still pushes to master.
+      - name: Update the AltStore manifest
+        run: |
+          set -euo pipefail
+          tag="${{ needs.preflight.outputs.tag }}"
+          download_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/xl-authenticator-iOS.ipa"
+
+          git fetch origin master
+          git checkout -B master origin/master
+
+          python3 tools/update_altstore.py \
+            --file altstore.json \
+            --version "${{ steps.ipa.outputs.version }}" \
+            --build "${{ steps.ipa.outputs.build }}" \
+            --size "${{ steps.ipa.outputs.size }}" \
+            --min-os-version "${{ steps.ipa.outputs.min_os }}" \
+            --download-url "$download_url" \
+            --notes "Release ${tag}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add altstore.json
+
+          # update_altstore.py already drops any existing entry for the same
+          # version/build before prepending, so re-running a release for the same
+          # tag rewrites its entry rather than stacking a duplicate.
+          if git diff --cached --quiet; then
+            echo "altstore.json already up to date."
+          else
+            git commit -m "Update altstore.json for ${tag} [skip ci]"
+            git push origin HEAD:master
+          fi

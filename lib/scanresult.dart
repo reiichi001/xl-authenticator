@@ -1,13 +1,13 @@
 class ScanResult {
-  late ScanResultType type;
-  late String data;
+  final ScanResultType type;
+  final String data;
 
-  ScanResult(this.type, this.data);
-  ScanResult.uri(this.data) : type = ScanResultType.Uri;
-  ScanResult.raw(this.data) : type = ScanResultType.Raw;
+  const ScanResult(this.type, this.data);
+  const ScanResult.uri(this.data) : type = ScanResultType.uri;
+  const ScanResult.raw(this.data) : type = ScanResultType.raw;
 }
 
 enum ScanResultType {
-  Uri,
-  Raw
+  uri,
+  raw,
 }

@@ -4,47 +4,59 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class Communication {
-  static const String IP_KEY = "IP";
+  static const String ipKey = "IP";
 
   static Future<String?> getSavedIps() async {
-    var prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    if (!prefs.containsKey(IP_KEY))
+    if (!prefs.containsKey(ipKey)) {
       return null;
+    }
 
-    return prefs.getString(IP_KEY);
+    return prefs.getString(ipKey);
   }
 
   static Future<void> setSavedIps(String ips) async {
-    var prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setString(IP_KEY, ips);
+    await prefs.setString(ipKey, ips);
   }
 
+  /// Sends [otp] to every configured XIVLauncher IP, separated by `;`.
+  ///
+  /// Returns whether at least one of them was reached.
   static Future<bool> sendOtp(String otp) async {
-    String? ips = await Communication.getSavedIps();
+    final ips = await Communication.getSavedIps();
 
-    if (ips == null)
+    if (ips == null) {
       return false;
+    }
 
-    List<String>? ipList = ips.split(';');
+    final ipList = ips
+        .split(';')
+        .map((ip) => ip.trim())
+        .where((ip) => ip.isNotEmpty)
+        .toList();
 
-    for (var currentIp = 0; currentIp < ips.length; currentIp++) {
-      var ip = ipList[currentIp];
-      var uri = Uri.http("$ip:4646", "ffxivlauncher/$otp");
+    var reachedAny = false;
+
+    for (final ip in ipList) {
+      final uri = Uri.http("$ip:4646", "ffxivlauncher/$otp");
       try {
         await http.get(uri);
-      } on http
-          .ClientException catch (e) { // This happens since the XL http server is badly implemented, no problem though
-        developer.log('ClientException: ' + uri.toString(),
+        reachedAny = true;
+      } on http.ClientException catch (e) {
+        // This happens since the XL http server is badly implemented, no
+        // problem though. Keep going so the remaining IPs are still tried.
+        developer.log('ClientException: $uri',
             name: 'com.goatsoft.xl_otpsend', error: e);
-        return true;
-      }
-      catch (e) {
-        developer.log('could not send to: ' + uri.toString(),
+        reachedAny = true;
+      } catch (e) {
+        developer.log('could not send to: $uri',
             name: 'com.goatsoft.xl_otpsend', error: e);
       }
     }
-    return true;
+
+    return reachedAny;
   }
 }
