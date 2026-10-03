@@ -19,6 +19,15 @@
             "category": "utilities",
             "versions": [
                 {
+                    "version": "1.0.8",
+                    "buildVersion": "9",
+                    "date": "2026-10-03T05:54:08Z",
+                    "localizedDescription": "Fixes the two things that were wrong on the main screen, and matches the app's\ncolours to the logo.\n\nThe countdown bar under your OTP now tracks the code exactly: it starts full as\nthe code appears and empties as it expires, instead of finishing about a second\nand a half early. The bar and the code both read the same clock, so they can no\nlonger disagree.\n\nThe \"Resend to XL\" button barely had a background in either mode and read as\nplain text, and the progress bar was drawn in a single flat colour that made it\nlook frozen - both were Material 3 colour roles that the old theme never set.\nBoth themes are now built from a single colour, taken from the logo, so the app\nbar, the button and the bar all match it in light and dark mode.",
+                    "size": 8558995,
+                    "minOSVersion": "15.0",
+                    "downloadURL": "https://github.com/reiichi001/xl-authenticator/releases/download/1.0.8/xl-authenticator-iOS.ipa"
+                },
+                {
                     "version": "1.0.7",
                     "buildVersion": "8",
                     "date": "2026-10-03T02:33:59Z",
