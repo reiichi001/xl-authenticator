@@ -1,0 +1,88 @@
+name: Build iOS
+
+# Reusable (the release workflow calls it) *and* self-triggering on pull requests
+# and master pushes.
+#
+# GitHub path filters are per-workflow, not per-job, which is the whole reason
+# this is a separate file rather than a job inside one combined workflow: it is
+# the only way to say "iOS work only rebuilds iOS". `lib/**`, `assets/**` and the
+# pubspecs are shared with Android, so they appear in both this list and
+# build-android.yaml's - a Dart change really does affect both platforms.
+#
+# No `tags:` trigger on purpose. A tag push runs the release workflow, which
+# calls this one, so each platform is built exactly once per release.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (a tag when called by the release workflow).
+        type: string
+        default: ''
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'ios/**'
+      - '.github/workflows/build-ios.yaml'
+      - '.github/actions/flutter-setup/**'
+  push:
+    branches: [master]
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'ios/**'
+      - '.github/workflows/build-ios.yaml'
+      - '.github/actions/flutter-setup/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-ios-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Flutter
+        uses: ./.github/actions/flutter-setup
+
+      - name: Build iOS app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Resign iOS app
+        run: find build/ios/iphoneos/Runner.app -type f -exec ldid -S -M {} \;
+
+      # Only the outer filename is ours to choose. The zip's top-level directory
+      # has to stay `Payload/` - AltStore and every other sideloading tool
+      # expects that layout, and an IPA that unzips to anything else will not
+      # install.
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r -y xl-authenticator-ios.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          if-no-files-found: error
+          path: xl-authenticator-ios.ipa

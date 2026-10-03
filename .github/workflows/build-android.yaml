@@ -1,0 +1,125 @@
+name: Build Android
+
+# Reusable (the release workflow calls it) *and* self-triggering on pull requests
+# and master pushes. See build-ios.yaml for why the split is per-file: GitHub
+# path filters cannot be expressed per job. The shared entries (`lib/**`,
+# `assets/**`, the pubspecs) are intentionally duplicated between the two files.
+#
+# No `tags:` trigger - the release workflow builds this once per release.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (a tag when called by the release workflow).
+        type: string
+        default: ''
+    outputs:
+      apk-debug-signed:
+        description: >
+          'true' when no release keystore is configured, so the APK was signed
+          with the debug key.
+        value: ${{ jobs.build.outputs.apk-debug-signed }}
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
+      - '.github/workflows/build-android.yaml'
+      - '.github/actions/flutter-setup/**'
+  push:
+    branches: [master]
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
+      - '.github/workflows/build-android.yaml'
+      - '.github/actions/flutter-setup/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-android-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Linux, not macOS: the Android build needs the JDK and the Android SDK,
+    # both of which the Linux image already has, and a Linux runner costs a
+    # fraction of a macOS one. This job only ran on macOS because it used to
+    # share a runner with the iOS build.
+    runs-on: ubuntu-latest
+    outputs:
+      apk-debug-signed: ${{ steps.package.outputs.debug_signed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Flutter
+        uses: ./.github/actions/flutter-setup
+
+      # Optional by design. This is a fork without a release keystore, and the
+      # Android build has to keep working without one - the missing secret is a
+      # deliberate choice, not a misconfiguration to fail on.
+      #
+      # These are repository secrets, so a caller reaching this workflow through
+      # `uses:` has to pass `secrets: inherit` (see release.yaml) - otherwise
+      # they all arrive empty and the build silently falls back to debug signing.
+      - name: Configure Android signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; the APK will be debug-signed."
+            echo "debug_signed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "debug_signed=false" >> "$GITHUB_OUTPUT"
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/release.jks
+          cat > android/key.properties <<EOF
+          storeFile=$PWD/android/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      # With no keystore the APK is release-mode but signed with the *debug* key.
+      # It still gets attached to public releases, and the Gradle default name
+      # ("app-release.apk") would suggest something installable, so say what it
+      # actually is in the filename.
+      - name: Name the APK
+        id: package
+        run: |
+          set -euo pipefail
+          debug_signed="${{ steps.signing.outputs.debug_signed }}"
+          if [ "$debug_signed" = "true" ]; then
+            name=xl-authenticator-android-debug-signed.apk
+          else
+            name=xl-authenticator-android.apk
+          fi
+          cp build/app/outputs/flutter-apk/app-release.apk "$name"
+          echo "debug_signed=$debug_signed" >> "$GITHUB_OUTPUT"
+          echo "Named the APK $name (debug_signed=$debug_signed)"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          if-no-files-found: error
+          path: xl-authenticator-android*.apk

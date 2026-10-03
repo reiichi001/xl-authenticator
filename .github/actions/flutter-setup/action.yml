@@ -1,0 +1,29 @@
+name: Set up Flutter
+description: >
+  Java and Flutter toolchains plus pub dependencies, pinned in one place.
+
+  Every build workflow runs this so there is a single FLUTTER_VERSION to bump
+  when upgrading Flutter, instead of one copy per workflow drifting apart.
+  Checkout is deliberately *not* here: the release workflow has to check out a
+  tag rather than the dispatched ref, and that plumbing is clearer when it stays
+  visible in each workflow.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.47.6'
+        channel: stable
+        cache: true
+
+    - name: Install dependencies
+      shell: bash
+      run: flutter pub get
