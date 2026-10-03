@@ -51,32 +51,36 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle defaultStyle = TextStyle(color: Colors.grey, fontSize: 13.0);
-    TextStyle linkStyle = TextStyle(color: Colors.blue, fontSize: 13.0);
+    final scheme = Theme.of(context).colorScheme;
+
+    // Read from the scheme so the body text keeps its contrast in either
+    // brightness; the hardcoded greys were low-contrast on a dark surface.
+    // There is no "success" role, so the good state keeps a fixed green.
+    TextStyle defaultStyle = TextStyle(
+      color: scheme.onSurfaceVariant,
+      fontSize: 13.0,
+    );
+    TextStyle linkStyle = TextStyle(color: scheme.primary, fontSize: 13.0);
 
     TextStyle goodStyle = TextStyle(color: Colors.green, fontSize: 13.0);
-    TextStyle badStyle = TextStyle(color: Colors.red, fontSize: 13.0);
+    TextStyle badStyle = TextStyle(color: scheme.error, fontSize: 13.0);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Settings"),
-        backgroundColor: Colors.blueAccent,
-      ),
+      // Colours come from the app's AppBarTheme.
+      appBar: AppBar(title: Text("Settings")),
       body: SingleChildScrollView(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Padding(
-              padding: EdgeInsets.only(top: 100.0),
-            ),
+            Padding(padding: EdgeInsets.only(top: 100.0)),
             RichText(
-                text: TextSpan(
-              style: defaultStyle,
-              children: <TextSpan>[
-                TextSpan(text: 'Registered: '),
-                TextSpan(
+              text: TextSpan(
+                style: defaultStyle,
+                children: <TextSpan>[
+                  TextSpan(text: 'Registered: '),
+                  TextSpan(
                     text: ((() {
-                      if (isAccountSaved){
+                      if (isAccountSaved) {
                         if (savedName != '') {
                           return savedName;
                         }
@@ -98,17 +102,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           Clipboard.setData(ClipboardData(text: secret));
 
                           Fluttertoast.showToast(
-                              msg: "Secret copied!",
-                              toastLength: Toast.LENGTH_LONG,
-                              gravity: ToastGravity.BOTTOM,
-                              timeInSecForIosWeb: 1,
-                              backgroundColor: Colors.red,
-                              textColor: Colors.white,
-                              fontSize: 16.0);
+                            msg: "Secret copied!",
+                            toastLength: Toast.LENGTH_LONG,
+                            gravity: ToastGravity.BOTTOM,
+                            timeInSecForIosWeb: 1,
+                            backgroundColor: scheme.error,
+                            textColor: scheme.onError,
+                            fontSize: 16.0,
+                          );
                         }
-                      }),
-              ],
-            )),
+                      },
+                  ),
+                ],
+              ),
+            ),
             ElevatedButton(
               onPressed: () {
                 _navigateAndScanQr(context);
@@ -121,11 +128,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 future: Communication.getSavedIps(),
                 builder: (context, snapshot) {
                   return RichText(
-                      text: TextSpan(
-                    style: defaultStyle,
-                    children: <TextSpan>[
-                      TextSpan(text: 'XIVLauncher IP: '),
-                      TextSpan(
+                    text: TextSpan(
+                      style: defaultStyle,
+                      children: <TextSpan>[
+                        TextSpan(text: 'XIVLauncher IP: '),
+                        TextSpan(
                           text: ((() {
                             if (snapshot.hasData) {
                               return snapshot.data as String;
@@ -144,9 +151,11 @@ class _SettingsPageState extends State<SettingsPage> {
                               if (secret != null) {
                                 Clipboard.setData(ClipboardData(text: secret));
                               }
-                            }),
-                    ],
-                  ));
+                            },
+                        ),
+                      ],
+                    ),
+                  );
                 },
               ),
             ),
@@ -158,15 +167,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
                 if (!context.mounted) return;
 
-                final result = await prompt(context,
-                    title: Text("Enter XIVLauncher IP"),
-                    textOK: Text("OK"),
-                    textCancel: Text("Cancel"),
-                    maxLines: 1,
-                    minLines: 1,
-                    autoFocus: true,
-                    textCapitalization: TextCapitalization.none,
-                    initialValue: initialValue);
+                final result = await prompt(
+                  context,
+                  title: Text("Enter XIVLauncher IP"),
+                  textOK: Text("OK"),
+                  textCancel: Text("Cancel"),
+                  maxLines: 1,
+                  minLines: 1,
+                  autoFocus: true,
+                  textCapitalization: TextCapitalization.none,
+                  initialValue: initialValue,
+                );
 
                 if (result != null) {
                   debugPrint("Manual entry: $result");
@@ -178,60 +189,74 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Text('Set XIVLauncher IPs'),
             ),
             RichText(
-                      text: TextSpan(style: defaultStyle, text: 'Note: You can set multiple IPs, seperated by ;'),
+              text: TextSpan(
+                style: defaultStyle,
+                text: 'Note: You can set multiple IPs, seperated by ;',
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(top: 20.0),
+              child: Row(
+                children: [
+                  SizedBox(width: 100),
+                  Text("Close app after sending:"),
+                  Checkbox(
+                    value: isRestartChecked,
+                    activeColor: scheme.primary,
+                    onChanged: (value) {
+                      setState(() {
+                        isRestartChecked = value as bool;
+                        GeneralSetting.setIsAutoClose(value);
+                      });
+                    },
                   ),
+                ],
+              ),
+            ),
             Padding(
-                padding: EdgeInsets.only(top: 20.0),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 100,
-                    ),
-                    Text("Close app after sending:"),
-                    Checkbox(
-                        value: isRestartChecked,
-                        activeColor: Colors.blueAccent,
-                        onChanged: (value) {
-                          setState(() {
-                            isRestartChecked = value as bool;
-                            GeneralSetting.setIsAutoClose(value);
-                          });
-                        })
-                  ],
-                )),
-            Padding(
-                padding: EdgeInsets.only(top: 50, left: 10, right: 10, bottom: 100),
-                child: RichText(
-                    text: TextSpan(
+              padding: EdgeInsets.only(
+                top: 50,
+                left: 10,
+                right: 10,
+                bottom: 100,
+              ),
+              child: RichText(
+                text: TextSpan(
                   style: defaultStyle,
                   children: <TextSpan>[
                     TextSpan(text: 'By goat, see '),
                     TextSpan(
-                        text: 'licenses',
-                        style: linkStyle,
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () {
-                            showLicensePage(
-                                context: context,
-                                applicationName: "XL Authenticator",
-                                applicationLegalese:
-                                    "Automatic OTPs for XIVLauncher\n(c) goaaats 2020",
-                                applicationIcon: Padding(
-                                    padding:
-                                        EdgeInsets.only(left: 100, right: 100),
-                                    child: Image(
-                                        image: AssetImage('assets/logo.png'))));
-                          }),
+                      text: 'licenses',
+                      style: linkStyle,
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () {
+                          showLicensePage(
+                            context: context,
+                            applicationName: "XL Authenticator",
+                            applicationLegalese:
+                                "Automatic OTPs for XIVLauncher\n(c) goaaats 2020",
+                            applicationIcon: Padding(
+                              padding: EdgeInsets.only(left: 100, right: 100),
+                              child: Image(
+                                image: AssetImage('assets/logo.png'),
+                              ),
+                            ),
+                          );
+                        },
+                    ),
                     TextSpan(text: ' and '),
                     TextSpan(
-                        text: 'source code',
-                        style: linkStyle,
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () async {
-                            await _openRepoLink();
-                          }),
+                      text: 'source code',
+                      style: linkStyle,
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () async {
+                          await _openRepoLink();
+                        },
+                    ),
                   ],
-                ))),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -239,10 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _openRepoLink() async {
-    await launchUrl(
-      Uri.parse(repoLink),
-      mode: LaunchMode.externalApplication,
-    );
+    await launchUrl(Uri.parse(repoLink), mode: LaunchMode.externalApplication);
   }
 
   Future<void> _navigateAndScanQr(BuildContext context) async {
@@ -250,7 +272,9 @@ class _SettingsPageState extends State<SettingsPage> {
     // Navigator.pop on the Selection Screen.
     final result = await Navigator.push<ScanResult>(
       context,
-      MaterialPageRoute<ScanResult>(builder: (context) => const QRViewExample()),
+      MaterialPageRoute<ScanResult>(
+        builder: (context) => const QRViewExample(),
+      ),
     );
 
     if (result == null || !context.mounted) return;
@@ -258,7 +282,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final saved = switch (result.type) {
       ScanResultType.uri => SavedAccount.parse(result.data),
       ScanResultType.raw => SavedAccount.unnamed(
-          result.data.toString().toUpperCase().replaceAll(" ", "")),
+        result.data.toString().toUpperCase().replaceAll(" ", ""),
+      ),
     };
 
     setState(() {

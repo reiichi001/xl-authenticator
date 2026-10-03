@@ -26,8 +26,9 @@ void main() {
     });
 
     test('returns a null secret when the query parameter is missing', () {
-      final account =
-          SavedAccount.parse('otpauth://totp/Square%20Enix%20ID:Test');
+      final account = SavedAccount.parse(
+        'otpauth://totp/Square%20Enix%20ID:Test',
+      );
 
       expect(account.accountName, 'Test');
       expect(account.secret, isNull);

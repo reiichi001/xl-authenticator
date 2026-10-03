@@ -48,12 +48,18 @@ class Communication {
       } on http.ClientException catch (e) {
         // This happens since the XL http server is badly implemented, no
         // problem though. Keep going so the remaining IPs are still tried.
-        developer.log('ClientException: $uri',
-            name: 'com.goatsoft.xl_otpsend', error: e);
+        developer.log(
+          'ClientException: $uri',
+          name: 'com.goatsoft.xl_otpsend',
+          error: e,
+        );
         reachedAny = true;
       } catch (e) {
-        developer.log('could not send to: $uri',
-            name: 'com.goatsoft.xl_otpsend', error: e);
+        developer.log(
+          'could not send to: $uri',
+          name: 'com.goatsoft.xl_otpsend',
+          error: e,
+        );
       }
     }
 
